@@ -3,6 +3,7 @@ name = "rawrchive"
 version = "0.0.1"
 edition = "2024"
 description = "A pure Rust RAR5 extractor"
+license = "GPL-3.0-or-later"
 include = ["src/**", "Cargo.toml", "/README.md", "/LICENSE.md"]
 
 [dependencies]
