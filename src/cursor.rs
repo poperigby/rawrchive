@@ -1,13 +1,14 @@
 use thiserror::Error;
 
-/// The maximum size of a `vint`, in bytes.
+/// The maximum allowed size of a `vint`, in bytes.
 const VINT_MAX_SIZE: u8 = 10;
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 
-/// Holds onto a header slice and allows reading through
+/// Holds onto a slice of header bytes, and allows reading through it.
 pub struct HeaderCursor<'a> {
     header: &'a [u8],
+    /// Points at the byte that will be read next.
     position: usize,
 }
 
@@ -55,6 +56,20 @@ impl<'a> HeaderCursor<'a> {
         Ok(*value)
     }
 
+    /// Read the next `n` bytes in the header. Use this function when we don't know the size of the
+    /// data at compile time (e.g. file names, extra record bodies, etc.).
+    pub fn read_bytes(&mut self, n: usize) -> Result<&[u8]> {
+        let end = self.position.checked_add(n).ok_or(ParseError::Truncated)?;
+        let bytes = self
+            .header
+            .get(self.position..end)
+            .ok_or(ParseError::Truncated)?;
+
+        self.position = end;
+
+        Ok(bytes)
+    }
+
     pub fn read_u16(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes(self.read_array::<2>()?))
     }
@@ -74,21 +89,9 @@ impl<'a> HeaderCursor<'a> {
             .split_first_chunk::<N>()
             .ok_or(ParseError::Truncated)?;
 
+        self.position += N;
+
         Ok(*bytes.0)
-    }
-
-    /// Read the next `n` bytes in the header. Use this function when we don't know the size of the
-    /// data at compile time (e.g. file names, extra record bodies, etc.).
-    fn read_bytes(&mut self, n: usize) -> Result<&[u8]> {
-        let end = self.position.checked_add(n).ok_or(ParseError::Truncated)?;
-        let bytes = self
-            .header
-            .get(self.position..end)
-            .ok_or(ParseError::Truncated)?;
-
-        self.position = end;
-
-        Ok(bytes)
     }
 }
 
@@ -118,5 +121,51 @@ mod test {
     fn read_vint(#[case] bytes: &[u8], #[case] expected: Result<u64, ParseError>) {
         let mut c = HeaderCursor::new(bytes);
         assert_eq!(c.read_vint(), expected);
+    }
+
+    #[test]
+    fn read_byte() {
+        let bytes = [0x85];
+
+        let mut c = HeaderCursor::new(&bytes);
+
+        assert_eq!(c.read_byte().unwrap(), bytes[0]);
+        assert_eq!(c.read_byte(), Err(ParseError::Truncated));
+    }
+
+    #[test]
+    fn read_bytes() {
+        let bytes = [0x85, 0xF7, 0x81];
+
+        let mut c = HeaderCursor::new(&bytes);
+
+        assert_eq!(c.read_bytes(3).unwrap(), bytes);
+        assert_eq!(c.read_bytes(1), Err(ParseError::Truncated));
+    }
+
+    #[test]
+    fn read_bytes_too_many() {
+        let bytes = [0x85, 0xF7, 0x81];
+
+        let mut c = HeaderCursor::new(&bytes);
+
+        assert_eq!(c.read_bytes(64), Err(ParseError::Truncated));
+    }
+
+    #[test]
+    fn read_ints() {
+        const BYTES: &[u8] = &[
+            0x34, 0x12, // u16: 4660
+            0x78, 0x56, 0x34, 0x12, // u32: 305419896
+            0xEF, 0xCD, 0xAB, 0x90, 0x78, 0x56, 0x34, 0x12, // u64: 1311768467294899695
+        ];
+
+        let mut c = HeaderCursor::new(BYTES);
+
+        assert_eq!(c.read_u16().unwrap(), 4660);
+        assert_eq!(c.read_u32().unwrap(), 305419896);
+        assert_eq!(c.read_u64().unwrap(), 1311768467294899695);
+
+        assert_eq!(c.read_byte(), Err(ParseError::Truncated));
     }
 }
