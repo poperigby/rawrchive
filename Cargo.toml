@@ -7,3 +7,4 @@ license = "GPL-3.0-or-later"
 include = ["src/**", "Cargo.toml", "/README.md", "/LICENSE.md"]
 
 [dependencies]
+thiserror = "2.0.21"

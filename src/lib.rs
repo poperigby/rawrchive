@@ -5,6 +5,8 @@ use std::{
     io::{BufReader, Read, Seek},
 };
 
+mod cursor;
+
 /// The RAR signature is identical between v4 and v5, save for the last 1–2 bytes that designates
 /// the version.
 const SIGNATURE: &[u8] = &[0x52, 0x61, 0x72, 0x21, 0x1A, 0x07];
@@ -42,7 +44,6 @@ where
             (0x00, _) => Version::Rar4,
             _ => panic!("Invalid version"),
         };
-        dbg!(version);
 
         rar
     }

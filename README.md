@@ -2,6 +2,8 @@
 
 Pure safe Rust RAR5 extractor. No unRAR code!
 
+Guaranteed AI slop free since 2026!
+
 ## Provenance
 
 Rawrchive contains no code from RARLAB's unRAR utility, making it entirely free software!
