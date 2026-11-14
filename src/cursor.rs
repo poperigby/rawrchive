@@ -19,7 +19,7 @@ impl<'a> HeaderCursor<'a> {
         }
     }
 
-    pub fn read_u8(&mut self) -> Result<u8> {
+    pub fn read_byte(&mut self) -> Result<u8> {
         let value = self
             .header
             .get(self.position)
@@ -36,7 +36,7 @@ impl<'a> HeaderCursor<'a> {
         let mut shift = 0;
 
         for _ in 0..VINT_MAX_SIZE {
-            let byte = self.read_u8()?;
+            let byte = self.read_byte()?;
 
             // The lower 7 bits contain the integer data
             let data = byte & 0x7F;
@@ -78,7 +78,7 @@ mod test {
         ];
         for (bytes, expected) in cases {
             let mut c = HeaderCursor::new(bytes);
-            assert_eq!(c.read_vint(), Some(*expected));
+            assert_eq!(c.read_vint().unwrap(), *expected);
         }
     }
 }
