@@ -3,7 +3,7 @@ use thiserror::Error;
 /// The maximum size of a `vint`, in bytes.
 const VINT_MAX_SIZE: u8 = 10;
 
-pub type Result<T> = std::result::Result<T, HeaderError>;
+pub type Result<T> = std::result::Result<T, ParseError>;
 
 /// Holds onto a header slice and allows reading through
 pub struct HeaderCursor<'a> {
@@ -17,17 +17,6 @@ impl<'a> HeaderCursor<'a> {
             header,
             position: 0,
         }
-    }
-
-    pub fn read_byte(&mut self) -> Result<u8> {
-        let value = self
-            .header
-            .get(self.position)
-            .ok_or(HeaderError::Truncated)?;
-
-        self.position += 1;
-
-        Ok(*value)
     }
 
     /// Return the next [vint](https://www.rarlab.com/technote.htm#vint) in the header.
@@ -52,12 +41,59 @@ impl<'a> HeaderCursor<'a> {
             }
         }
 
-        Err(HeaderError::VintTooLong)
+        Err(ParseError::VintTooLong)
+    }
+
+    pub fn read_byte(&mut self) -> Result<u8> {
+        let value = self
+            .header
+            .get(self.position)
+            .ok_or(ParseError::Truncated)?;
+
+        self.position += 1;
+
+        Ok(*value)
+    }
+
+    pub fn read_u16(&mut self) -> Result<u16> {
+        Ok(u16::from_le_bytes(self.read_array::<2>()?))
+    }
+
+    pub fn read_u32(&mut self) -> Result<u32> {
+        Ok(u32::from_le_bytes(self.read_array::<4>()?))
+    }
+
+    pub fn read_u64(&mut self) -> Result<u64> {
+        Ok(u64::from_le_bytes(self.read_array::<8>()?))
+    }
+
+    /// Read the next `N` bytes in the header. Use this function when you know the size of data at
+    /// compile time (e.g. integers).
+    fn read_array<const N: usize>(&mut self) -> Result<[u8; N]> {
+        let bytes = self.header[self.position..]
+            .split_first_chunk::<N>()
+            .ok_or(ParseError::Truncated)?;
+
+        Ok(*bytes.0)
+    }
+
+    /// Read the next `n` bytes in the header. Use this function when we don't know the size of the
+    /// data at compile time (e.g. file names, extra record bodies, etc.).
+    fn read_bytes(&mut self, n: usize) -> Result<&[u8]> {
+        let end = self.position.checked_add(n).ok_or(ParseError::Truncated)?;
+        let bytes = self
+            .header
+            .get(self.position..end)
+            .ok_or(ParseError::Truncated)?;
+
+        self.position = end;
+
+        Ok(bytes)
     }
 }
 
-#[derive(Debug, Error)]
-pub enum HeaderError {
+#[derive(Debug, Error, PartialEq)]
+pub enum ParseError {
     #[error("The vint was larger than the maximum allowed size of {VINT_MAX_SIZE} bytes.")]
     VintTooLong,
     #[error("The header unexpectedly ended")]
@@ -66,19 +102,21 @@ pub enum HeaderError {
 
 #[cfg(test)]
 mod test {
-    use crate::cursor::HeaderCursor;
+    use crate::cursor::{HeaderCursor, ParseError};
+    use rstest::rstest;
 
-    #[test]
-    fn read_vint() {
-        let cases: &[(&[u8], u64)] = &[
-            (&[0x05], 5),
-            (&[0x7F], 127),
-            (&[0x80, 0x01], 128),
-            (&[0x85, 0x02], 261),
-        ];
-        for (bytes, expected) in cases {
-            let mut c = HeaderCursor::new(bytes);
-            assert_eq!(c.read_vint().unwrap(), *expected);
-        }
+    #[rstest]
+    #[case::one_byte(&[0x05], Ok(5))]
+    #[case::max_one_byte(&[0x7F], Ok(127))]
+    #[case::two_bytes_zero_first(&[0x80, 0x01], Ok(128))]
+    #[case::two_bytes(&[0x85, 0x02], Ok(261))]
+    #[case::max_valid(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01], Ok(u64::MAX))]
+    #[case::too_long(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01], Err(ParseError::VintTooLong))]
+    #[case::ten_continues(&[0x80; 10], Err(ParseError::VintTooLong))]
+    #[case::truncated(&[0x80], Err(ParseError::Truncated))]
+    #[case::empty(&[], Err(ParseError::Truncated))]
+    fn read_vint(#[case] bytes: &[u8], #[case] expected: Result<u64, ParseError>) {
+        let mut c = HeaderCursor::new(bytes);
+        assert_eq!(c.read_vint(), expected);
     }
 }
