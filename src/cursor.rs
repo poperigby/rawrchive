@@ -13,7 +13,7 @@ pub struct ByteCursor<'a> {
 }
 
 impl<'a> ByteCursor<'a> {
-    pub fn new(bytes: &'a [u8]) -> Self {
+    pub fn from_bytes(bytes: &'a [u8]) -> Self {
         Self { bytes, position: 0 }
     }
 
@@ -113,7 +113,7 @@ mod test {
     #[case::truncated(&[0x80], Err(ParseError::Truncated))]
     #[case::empty(&[], Err(ParseError::Truncated))]
     fn read_vint(#[case] bytes: &[u8], #[case] expected: Result<u64, ParseError>) {
-        let mut c = ByteCursor::new(bytes);
+        let mut c = ByteCursor::from_bytes(bytes);
         assert_eq!(c.read_vint(), expected);
     }
 
@@ -121,7 +121,7 @@ mod test {
     fn read_byte() {
         let bytes = [0x85];
 
-        let mut c = ByteCursor::new(&bytes);
+        let mut c = ByteCursor::from_bytes(&bytes);
 
         assert_eq!(c.read_byte().unwrap(), bytes[0]);
         assert_eq!(c.read_byte(), Err(ParseError::Truncated));
@@ -131,7 +131,7 @@ mod test {
     fn read_bytes() {
         let bytes = [0x85, 0xF7, 0x81];
 
-        let mut c = ByteCursor::new(&bytes);
+        let mut c = ByteCursor::from_bytes(&bytes);
 
         assert_eq!(c.read_bytes(3).unwrap(), bytes);
         assert_eq!(c.read_bytes(1), Err(ParseError::Truncated));
@@ -141,7 +141,7 @@ mod test {
     fn read_bytes_too_many() {
         let bytes = [0x85, 0xF7, 0x81];
 
-        let mut c = ByteCursor::new(&bytes);
+        let mut c = ByteCursor::from_bytes(&bytes);
 
         assert_eq!(c.read_bytes(64), Err(ParseError::Truncated));
     }
@@ -154,7 +154,7 @@ mod test {
             0xEF, 0xCD, 0xAB, 0x90, 0x78, 0x56, 0x34, 0x12, // u64: 1311768467294899695
         ];
 
-        let mut c = ByteCursor::new(BYTES);
+        let mut c = ByteCursor::from_bytes(BYTES);
 
         assert_eq!(c.read_u16().unwrap(), 4660);
         assert_eq!(c.read_u32().unwrap(), 305419896);

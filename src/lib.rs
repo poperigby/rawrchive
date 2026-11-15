@@ -5,8 +5,8 @@ use std::{
     io::{BufReader, Read, Seek},
 };
 
+mod block;
 mod cursor;
-mod header;
 
 /// The RAR signature is identical between v4 and v5, save for the last 1–2 bytes that designates
 /// the version.
@@ -38,11 +38,18 @@ where
 
         rar.read_to_signature();
 
-        let mut next_two_bytes = [0u8; 2];
-        rar.source.read_exact(&mut next_two_bytes).unwrap();
-        let version = match (next_two_bytes[0], next_two_bytes[1]) {
-            (0x01, 0x00) => Version::Rar5,
-            (0x00, _) => Version::Rar4,
+        let mut next_byte = [0u8; 1];
+        rar.source.read_exact(&mut next_byte).unwrap();
+        let version = match next_byte[0] {
+            0x01 => {
+                rar.source.read_exact(&mut next_byte).unwrap();
+                if next_byte[0] == 0x00 {
+                    Version::Rar5
+                } else {
+                    panic!("Invalid version");
+                }
+            }
+            0x00 => Version::Rar4,
             _ => panic!("Invalid version"),
         };
 
@@ -92,12 +99,12 @@ mod tests {
     }
 
     #[test]
-    fn test_read_header() {
+    fn read_header() {
         Rar::open(data("rar5_stored.rar"));
     }
 
     #[test]
-    fn test_sfx() {
+    fn sfx() {
         Rar::open(data("rar5_sfx.exe"));
     }
 }
