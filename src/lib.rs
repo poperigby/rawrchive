@@ -6,12 +6,13 @@ use std::{
 };
 
 mod cursor;
+mod header;
 
 /// The RAR signature is identical between v4 and v5, save for the last 1–2 bytes that designates
 /// the version.
 const SIGNATURE: &[u8] = &[0x52, 0x61, 0x72, 0x21, 0x1A, 0x07];
 
-const MAX_SFX_SIZE: usize = 1000 * 1000;
+const SFX_MAX_SIZE: usize = 1000 * 1000;
 
 #[derive(Debug)]
 pub enum Version {
@@ -69,7 +70,7 @@ where
 
             bytes_read += 1;
 
-            if bytes_read > MAX_SFX_SIZE {
+            if bytes_read > SFX_MAX_SIZE {
                 panic!("Exceeded max SFX size. This isn't a RAR file");
             }
         }
