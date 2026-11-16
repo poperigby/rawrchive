@@ -94,6 +94,36 @@ impl Header {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MainHeader {
+    extra_area_size: Option<u64>,
+    archive_flags: ArchiveFlags,
+    volume_number: Option<u64>,
+}
+impl MainHeader {
+    fn new(mut cursor: ByteCursor, flags: HeaderFlags) -> Self {
+        let extra_area_size = if flags.contains(HeaderFlags::EXTRA_AREA) {
+            Some(cursor.read_vint().unwrap())
+        } else {
+            None
+        };
+
+        let archive_flags = ArchiveFlags::from_bits_retain(cursor.read_vint().unwrap());
+
+        let volume_number = if archive_flags.contains(ArchiveFlags::MULTI_VOLUME) {
+            Some(cursor.read_vint().unwrap())
+        } else {
+            None
+        };
+
+        Self {
+            extra_area_size,
+            archive_flags,
+            volume_number,
+        }
+    }
+}
+
 /// See `Header flags` field in <https://www.rarlab.com/technote.htm#genblock>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HeaderFlags(u64);
@@ -134,28 +164,24 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct MainHeader {
-    extra_area_size: Option<u64>,
-    archive_flags: ArchiveFlags,
-    volume_number: Option<u64>,
-}
-impl MainHeader {
-    fn new(mut cursor: ByteCursor, flags: HeaderFlags) -> Self {
-        let archive_flags = ArchiveFlags::from_bits_retain(cursor.read_vint().unwrap());
+#[cfg(test)]
+mod test {
+    use std::{fs::File, path::PathBuf};
 
-        Self {
-            extra_area_size: if flags.contains(HeaderFlags::EXTRA_AREA) {
-                Some(cursor.read_vint().unwrap())
-            } else {
-                None
-            },
-            archive_flags,
-            volume_number: if archive_flags.contains(ArchiveFlags::MULTI_VOLUME) {
-                Some(cursor.read_vint().unwrap())
-            } else {
-                None
-            },
-        }
+    use crate::Archive;
+
+    fn data(name: &str) -> File {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/data")
+            .join(name);
+
+        File::open(path).unwrap()
+    }
+
+    #[test]
+    fn read_header() {
+        let mut a = Archive::open(data("rar5_stored.rar"));
+
+        let main_header_block = a.next_block();
     }
 }
