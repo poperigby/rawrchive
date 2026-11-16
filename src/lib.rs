@@ -5,6 +5,8 @@ use std::{
     io::{BufReader, Read, Seek},
 };
 
+use crate::block::Block;
+
 mod block;
 mod cursor;
 
@@ -20,29 +22,29 @@ pub enum Version {
     Rar5,
 }
 
-pub struct Rar<R>
+pub struct Archive<R>
 where
     R: Read + Seek,
 {
     source: BufReader<R>,
 }
 
-impl<R> Rar<R>
+impl<R> Archive<R>
 where
     R: Read + Seek,
 {
     pub fn open(source: R) -> Self {
         let reader = BufReader::new(source);
 
-        let mut rar = Self { source: reader };
+        let mut a = Self { source: reader };
 
-        rar.read_to_signature();
+        a.read_to_signature();
 
         let mut next_byte = [0u8; 1];
-        rar.source.read_exact(&mut next_byte).unwrap();
+        a.source.read_exact(&mut next_byte).unwrap();
         let version = match next_byte[0] {
             0x01 => {
-                rar.source.read_exact(&mut next_byte).unwrap();
+                a.source.read_exact(&mut next_byte).unwrap();
                 if next_byte[0] == 0x00 {
                     Version::Rar5
                 } else {
@@ -53,7 +55,11 @@ where
             _ => panic!("Invalid version"),
         };
 
-        rar
+        a
+    }
+
+    pub fn next_block<'a>(&'a mut self) -> Block<'a, R> {
+        Block::new(&mut self.source)
     }
 
     /// Read through the source until either the signature is found, or we hit the maximum size of
@@ -88,7 +94,7 @@ where
 mod tests {
     use std::{fs::File, path::PathBuf};
 
-    use crate::Rar;
+    use crate::Archive;
 
     fn data(name: &str) -> File {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -100,11 +106,13 @@ mod tests {
 
     #[test]
     fn read_header() {
-        Rar::open(data("rar5_stored.rar"));
+        let mut a = Archive::open(data("rar5_stored.rar"));
+
+        dbg!(a.next_block());
     }
 
     #[test]
     fn sfx() {
-        Rar::open(data("rar5_sfx.exe"));
+        Archive::open(data("rar5_sfx.exe"));
     }
 }

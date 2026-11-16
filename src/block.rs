@@ -1,17 +1,23 @@
-use std::io::{Read, Seek};
+use std::io::{BufReader, Read, Seek};
 
-/// Header data common to all headers
-///
-/// See <https://www.rarlab.com/technote.htm#genblock> for details.
-pub struct BlockHeader {
-    bytes: Vec<u8>,
+use bitflags::bitflags;
+
+use crate::cursor::ByteCursor;
+
+#[derive(Debug)]
+pub struct Block<'a, R>
+where
+    R: Read + Seek,
+{
+    source: &'a mut BufReader<R>,
+    header: Header,
 }
 
-impl BlockHeader {
-    pub fn from_source<R>(mut source: R) -> Self
-    where
-        R: Read + Seek,
-    {
+impl<'a, R> Block<'a, R>
+where
+    R: Read + Seek,
+{
+    pub fn new(source: &'a mut BufReader<R>) -> Self {
         let mut crc_bytes = [0u8; 4];
         source.read_exact(&mut crc_bytes).unwrap();
         let stored_crc = u32::from_le_bytes(crc_bytes);
@@ -53,40 +59,103 @@ impl BlockHeader {
 
         let computed_crc = crc32fast::hash(&bytes);
 
-        println!("Stored: {:02x?}", stored_crc);
-        println!("Computed: {:02x?}", computed_crc);
-
         assert_eq!(stored_crc, computed_crc);
 
-        Self { bytes: buffer }
+        let header = Header::from_bytes(&buffer);
+
+        Self { source, header }
     }
 }
 
-#[cfg(test)]
-mod test {
-    use std::{
-        fs::File,
-        io::{Seek, SeekFrom},
-        path::PathBuf,
-    };
+#[derive(Debug, Clone)]
+pub enum Header {
+    Main(MainHeader),
+    File,
+    Service,
+    Encryption,
+    End,
+}
 
-    use crate::block::BlockHeader;
+impl Header {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let mut c = ByteCursor::from_bytes(bytes);
 
-    fn data(name: &str) -> File {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/data")
-            .join(name);
+        let kind = c.read_vint().unwrap();
+        let flags = HeaderFlags::from_bits_retain(c.read_vint().unwrap());
 
-        File::open(path).unwrap()
+        match kind {
+            1 => Self::Main(MainHeader::new(c, flags)),
+            2 => Self::File,
+            3 => Self::Service,
+            4 => Self::Encryption,
+            5 => Self::End,
+            _ => panic!("Unknown header type"),
+        }
     }
+}
 
-    #[test]
-    fn rar5_stored() {
-        let mut source = data("rar5_stored.rar");
+/// See `Header flags` field in <https://www.rarlab.com/technote.htm#genblock>
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HeaderFlags(u64);
+bitflags! {
+    impl HeaderFlags: u64 {
+        /// Header is followed by an extra area.
+        const EXTRA_AREA = 0x0001;
+        /// Header is followed by a data area.
+        const DATA_AREA = 0x0002;
+        /// Skip blocks of unknown type with this flag when updating the archive.
+        const SKIP_IF_UNKNOWN = 0x0004;
+        /// Data area continues from the previous volume.
+        const SPLIT_BEFORE = 0x0008;
+        /// Data area continues in the next volume.
+        const SPLIT_AFTER = 0x0010;
+        /// Block depends on the preceding file block.
+        const DEPENDS_ON_PREV = 0x0020;
+        /// Keep child block when the parent block is modified.
+        const PRESERVE_CHILD = 0x0040;
+    }
+}
 
-        // Skip the signature
-        source.seek(SeekFrom::Start(8)).unwrap();
+/// See `Archive flags` field in <https://www.rarlab.com/technote.htm#mainhead>
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ArchiveFlags(u64);
+bitflags! {
+    impl ArchiveFlags: u64 {
+        /// This archive is part of a multi-volume set.
+        const MULTI_VOLUME = 0x0001;
+        /// The volumne number field is present. This flag is set in all but the first volume.
+        const VOLUME_NUMBER = 0x0002;
+        /// This is a solid archive: <https://en.wikipedia.org/wiki/Solid_compression>.
+        const SOLID = 0x0004;
+        /// A recovery record is present.
+        const RECOVERY_RECORD = 0x0008;
+        /// This archive is locked.
+        const LOCKED = 0x0010;
+    }
+}
 
-        BlockHeader::from_source(source);
+#[derive(Debug, Clone)]
+pub struct MainHeader {
+    extra_area_size: Option<u64>,
+    archive_flags: ArchiveFlags,
+    volume_number: Option<u64>,
+}
+impl MainHeader {
+    fn new(mut cursor: ByteCursor, flags: HeaderFlags) -> Self {
+        let archive_flags = ArchiveFlags::from_bits_retain(cursor.read_vint().unwrap());
+
+        Self {
+            extra_area_size: if flags.contains(HeaderFlags::EXTRA_AREA) {
+                Some(cursor.read_vint().unwrap())
+            } else {
+                None
+            },
+            archive_flags,
+            volume_number: if archive_flags.contains(ArchiveFlags::MULTI_VOLUME) {
+                Some(cursor.read_vint().unwrap())
+            } else {
+                None
+            },
+        }
     }
 }
