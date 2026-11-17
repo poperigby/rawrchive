@@ -9,6 +9,7 @@ use crate::block::Block;
 
 mod block;
 mod cursor;
+mod headers;
 
 /// The RAR signature is identical between v4 and v5, save for the last 1–2 bytes that designates
 /// the version.
@@ -54,6 +55,8 @@ where
             0x00 => Version::Rar4,
             _ => panic!("Invalid version"),
         };
+
+        // TODO: Parse through the opening blocks until we get to the file blocks
 
         a
     }

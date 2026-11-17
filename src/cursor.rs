@@ -64,6 +64,16 @@ impl<'a> ByteCursor<'a> {
         Ok(bytes)
     }
 
+    /// Skip `n` bytes.
+    pub fn skip(&mut self, n: usize) {
+        self.position += n;
+    }
+
+    /// The amount of unread bytes remaining in the cursor.
+    pub fn remaining(&self) -> usize {
+        self.bytes.len() - self.position
+    }
+
     pub fn read_u16(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes(self.read_array::<2>()?))
     }

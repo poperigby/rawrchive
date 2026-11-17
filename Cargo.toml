@@ -9,6 +9,7 @@ include = ["src/**", "Cargo.toml", "/README.md", "/LICENSE.md"]
 [dependencies]
 bitflags = "2.13.2"
 crc32fast = "1.5.5"
+nt-time = "0.15.0"
 thiserror = "2.0.21"
 
 [dev-dependencies]
