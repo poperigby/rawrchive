@@ -138,6 +138,7 @@ pub struct MetadataRecord {
     name: Option<String>,
     time: Option<SystemTime>,
 }
+
 impl MetadataRecord {
     fn parse(cursor: &mut ByteCursor) -> Self {
         let flags = MetadataFlags::from_bits_retain(cursor.read_vint().unwrap());
@@ -192,11 +193,15 @@ bitflags! {
 
 #[cfg(test)]
 mod test {
+    use std::time::UNIX_EPOCH;
+
+    use nt_time::time::Duration;
+
     use crate::{
         Archive,
         headers::{
             Header,
-            main_archive::{ArchiveFlags, ExtraRecord, LocatorRecord, MainHeader},
+            main_archive::{ArchiveFlags, ExtraRecord, LocatorRecord, MainHeader, MetadataRecord},
         },
     };
 
@@ -208,7 +213,7 @@ mod test {
     #[test]
     fn stored() {
         assert_eq!(
-            header("rar5_stored.rar"),
+            header("libarchive/v5/stored.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(6),
                 archive_flags: ArchiveFlags::empty(),
@@ -224,7 +229,7 @@ mod test {
     #[test]
     fn solid() {
         assert_eq!(
-            header("rar5_solid.rar"),
+            header("libarchive/v5/solid.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(7),
                 archive_flags: ArchiveFlags::SOLID,
@@ -240,7 +245,7 @@ mod test {
     #[test]
     fn arm() {
         assert_eq!(
-            header("rar5_arm.rar"),
+            header("libarchive/v5/arm.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(8),
                 archive_flags: ArchiveFlags::empty(),
@@ -256,7 +261,7 @@ mod test {
     #[test]
     fn extra_field_underflow() {
         assert_eq!(
-            header("rar5_extra_field_underflow.rar"),
+            header("libarchive/v5/extra_field_underflow.rar"),
             Header::Main(MainHeader {
                 extra_area_size: None,
                 archive_flags: ArchiveFlags::empty(),
@@ -270,12 +275,63 @@ mod test {
     fn main_block_extra_bytes() {
         assert_eq!(
             // Contains 8 bytes of 0x00 padding that will just be ignored.
-            header("rar5_main_block_extra_bytes.rar"),
+            header("libarchive/v5/main_block_extra_bytes.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(6),
                 archive_flags: ArchiveFlags::empty(),
                 volume_number: None,
-                extra_area: Vec::new(),
+                extra_area: vec![ExtraRecord::Locator(LocatorRecord {
+                    quick_open_offset: None,
+                    recovery_offset: None
+                })],
+            }),
+        );
+    }
+
+    #[test]
+    fn metadata_filetime() {
+        assert_eq!(
+            header("rawrchive/v5/metadata_filetime.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: Some(24),
+                archive_flags: ArchiveFlags::empty(),
+                volume_number: None,
+                extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
+                    name: Some("metadata.rar".into()),
+                    time: Some(UNIX_EPOCH + Duration::new(1_795_120_205, 921_933_900))
+                })],
+            }),
+        );
+    }
+
+    #[test]
+    fn metadata_unix() {
+        assert_eq!(
+            header("rawrchive/v5/metadata_unix.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: Some(20),
+                archive_flags: ArchiveFlags::empty(),
+                volume_number: None,
+                extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
+                    name: Some("metadata.rar".into()),
+                    time: Some(UNIX_EPOCH + Duration::new(1_795_120_205, 0))
+                })],
+            }),
+        );
+    }
+
+    #[test]
+    fn metadata_unix_ns() {
+        assert_eq!(
+            header("rawrchive/v5/metadata_unix_ns.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: Some(24),
+                archive_flags: ArchiveFlags::empty(),
+                volume_number: None,
+                extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
+                    name: Some("metadata.rar".into()),
+                    time: Some(UNIX_EPOCH + Duration::new(1_795_120_205, 921_933_900))
+                })],
             }),
         );
     }

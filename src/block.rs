@@ -71,7 +71,7 @@ mod test {
 
     #[test]
     fn read_header() {
-        let mut a = Archive::open_test("rar5_stored.rar");
+        let mut a = Archive::open_test("libarchive/v5/stored.rar");
 
         a.next_block();
     }

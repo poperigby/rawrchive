@@ -117,11 +117,11 @@ mod tests {
 
     #[test]
     fn stored() {
-        Archive::open_test("rar5_stored.rar");
+        Archive::open_test("libarchive/v5/stored.rar");
     }
 
     #[test]
     fn sfx() {
-        Archive::open_test("rar5_sfx.exe");
+        Archive::open_test("libarchive/v5/sfx.exe");
     }
 }

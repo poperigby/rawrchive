@@ -4,7 +4,8 @@ use rawrchive::Archive;
 
 #[test]
 fn stored() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/rar5_stored.rar");
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/libarchive/v5/stored.rar");
     let file = File::open(path).unwrap();
 
     let a = Archive::open(file);
