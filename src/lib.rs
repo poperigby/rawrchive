@@ -1,8 +1,11 @@
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
+use std::fs::File;
 use std::{
     collections::VecDeque,
     io::{BufReader, Read, Seek},
+    path::PathBuf,
 };
 
 use crate::block::Block;
@@ -94,28 +97,31 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use std::{fs::File, path::PathBuf};
+impl Archive<std::fs::File> {
+    pub(crate) fn open_test(name: &str) -> Self {
+        use std::fs::File;
 
-    use crate::Archive;
-
-    fn data(name: &str) -> File {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/data")
             .join(name);
 
-        File::open(path).unwrap()
+        let file = File::open(path).unwrap();
+
+        Archive::open(file)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Archive;
 
     #[test]
-    fn read_header() {
-        let mut a = Archive::open(data("rar5_stored.rar"));
-
-        dbg!(a.next_block());
+    fn stored() {
+        Archive::open_test("rar5_stored.rar");
     }
 
     #[test]
     fn sfx() {
-        Archive::open(data("rar5_sfx.exe"));
+        Archive::open_test("rar5_sfx.exe");
     }
 }

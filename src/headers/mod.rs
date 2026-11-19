@@ -4,7 +4,7 @@ use crate::{cursor::ByteCursor, headers::main_archive::MainHeader};
 
 mod main_archive;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Header {
     Main(MainHeader),
     File,
@@ -21,7 +21,7 @@ impl Header {
         let flags = HeaderFlags::from_bits_retain(c.read_vint().unwrap());
 
         match kind {
-            1 => Self::Main(MainHeader::new(c, flags)),
+            1 => Self::Main(MainHeader::parse(c, flags)),
             2 => Self::File,
             3 => Self::Service,
             4 => Self::Encryption,

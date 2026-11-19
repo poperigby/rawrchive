@@ -8,7 +8,7 @@ where
     R: Read + Seek,
 {
     source: &'a mut BufReader<R>,
-    header: Header,
+    pub(crate) header: Header,
 }
 
 impl<'a, R> Block<'a, R>
@@ -67,22 +67,12 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::{fs::File, path::PathBuf};
-
     use crate::Archive;
-
-    fn data(name: &str) -> File {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/data")
-            .join(name);
-
-        File::open(path).unwrap()
-    }
 
     #[test]
     fn read_header() {
-        let mut a = Archive::open(data("rar5_stored.rar"));
+        let mut a = Archive::open_test("rar5_stored.rar");
 
-        let main_header_block = a.next_block();
+        a.next_block();
     }
 }

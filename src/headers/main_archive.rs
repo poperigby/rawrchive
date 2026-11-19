@@ -2,18 +2,19 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bitflags::bitflags;
 use nt_time::FileTime;
+use tracing::warn;
 
 use crate::{cursor::ByteCursor, headers::HeaderFlags};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MainHeader {
-    extra_area_size: Option<u64>,
-    archive_flags: ArchiveFlags,
-    volume_number: Option<u64>,
-    extra_area: Vec<ExtraRecord>,
+    pub(crate) extra_area_size: Option<u64>,
+    pub(crate) archive_flags: ArchiveFlags,
+    pub(crate) volume_number: Option<u64>,
+    pub(crate) extra_area: Vec<ExtraRecord>,
 }
 impl MainHeader {
-    pub fn new(mut cursor: ByteCursor, flags: HeaderFlags) -> Self {
+    pub fn parse(mut cursor: ByteCursor, flags: HeaderFlags) -> Self {
         let extra_area_size = if flags.contains(HeaderFlags::EXTRA_AREA) {
             Some(cursor.read_vint().unwrap())
         } else {
@@ -60,7 +61,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExtraRecord {
     Locator(LocatorRecord),
     Metadata(MetadataRecord),
@@ -69,7 +70,7 @@ pub enum ExtraRecord {
 impl ExtraRecord {
     /// Parse out all extra area records using `cursor`, until we hit the end of the extra area.
     pub fn parse_all(cursor: &mut ByteCursor) -> Vec<ExtraRecord> {
-        // TODO: We can't assume the amount of records in the extra area, so we'll just keep reading
+        // We can't assume the amount of records in the extra area, so we'll just keep reading
         // until we run out of extra area bytes.
 
         let mut records = Vec::new();
@@ -82,8 +83,12 @@ impl ExtraRecord {
             match kind {
                 1 => records.push(Self::Locator(LocatorRecord::parse(cursor))),
                 2 => records.push(Self::Metadata(MetadataRecord::parse(cursor))),
-                // TODO: Log a warning that we don't recognize this record
-                _ => cursor.skip(size as usize),
+                unknown => {
+                    warn!(
+                        "Unrecognized extra record flag in main header: {unknown}. Skipping over it."
+                    );
+                    cursor.skip(size as usize)
+                }
             }
         }
 
@@ -91,7 +96,7 @@ impl ExtraRecord {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LocatorRecord {
     quick_open_offset: Option<u64>,
     recovery_offset: Option<u64>,
@@ -128,7 +133,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MetadataRecord {
     name: Option<String>,
     time: Option<SystemTime>,
@@ -148,9 +153,9 @@ impl MetadataRecord {
 
         let time = if flags.contains(MetadataFlags::ORIGINAL_CREATION_TIME) {
             let unix = flags.contains(MetadataFlags::UNIX_TIME);
-            let nanos = flags.contains(MetadataFlags::NANOSECONDS);
+            let nanoseconds = flags.contains(MetadataFlags::NANOSECONDS);
 
-            let time = match (unix, nanos) {
+            let time = match (unix, nanoseconds) {
                 // Windows FILETIME
                 (false, _) => SystemTime::from(FileTime::new(cursor.read_u64().unwrap())),
                 // Unix time without nanoseconds
@@ -182,5 +187,96 @@ bitflags! {
         const UNIX_TIME = 0x0004;
         /// Defines Unix time as nanoseconds since 1970-01-01 if 1 and as seconds since 1970-01-01 if 0.
         const NANOSECONDS = 0x0008;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        Archive,
+        headers::{
+            Header,
+            main_archive::{ArchiveFlags, ExtraRecord, LocatorRecord, MainHeader},
+        },
+    };
+
+    fn header(test_data: &str) -> Header {
+        let mut a = Archive::open_test(test_data);
+        a.next_block().header
+    }
+
+    #[test]
+    fn stored() {
+        assert_eq!(
+            header("rar5_stored.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: Some(6),
+                archive_flags: ArchiveFlags::empty(),
+                volume_number: None,
+                extra_area: vec![ExtraRecord::Locator(LocatorRecord {
+                    quick_open_offset: None,
+                    recovery_offset: None,
+                }),],
+            }),
+        );
+    }
+
+    #[test]
+    fn solid() {
+        assert_eq!(
+            header("rar5_solid.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: Some(7),
+                archive_flags: ArchiveFlags::SOLID,
+                volume_number: None,
+                extra_area: vec![ExtraRecord::Locator(LocatorRecord {
+                    quick_open_offset: None,
+                    recovery_offset: None,
+                })],
+            }),
+        );
+    }
+
+    #[test]
+    fn arm() {
+        assert_eq!(
+            header("rar5_arm.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: Some(8),
+                archive_flags: ArchiveFlags::empty(),
+                volume_number: None,
+                extra_area: vec![ExtraRecord::Locator(LocatorRecord {
+                    quick_open_offset: Some(40982),
+                    recovery_offset: None,
+                })],
+            }),
+        );
+    }
+
+    #[test]
+    fn extra_field_underflow() {
+        assert_eq!(
+            header("rar5_extra_field_underflow.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: None,
+                archive_flags: ArchiveFlags::empty(),
+                volume_number: None,
+                extra_area: Vec::new(),
+            }),
+        );
+    }
+
+    #[test]
+    fn main_block_extra_bytes() {
+        assert_eq!(
+            // Contains 8 bytes of 0x00 padding that will just be ignored.
+            header("rar5_main_block_extra_bytes.rar"),
+            Header::Main(MainHeader {
+                extra_area_size: Some(6),
+                archive_flags: ArchiveFlags::empty(),
+                volume_number: None,
+                extra_area: Vec::new(),
+            }),
+        );
     }
 }
