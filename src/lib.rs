@@ -31,6 +31,7 @@ where
     R: Read + Seek,
 {
     source: BufReader<R>,
+    main: MainHeader,
 }
 
 impl<R> Archive<R>

@@ -74,6 +74,10 @@ impl<'a> ByteCursor<'a> {
         self.bytes.len() - self.position
     }
 
+    pub fn position(&self) -> usize {
+        self.position
+    }
+
     pub fn read_u16(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes(self.read_array::<2>()?))
     }

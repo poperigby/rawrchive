@@ -37,6 +37,7 @@
                     config,
                     pkgs,
                     self',
+                    system,
                     ...
                 }:
                 let
@@ -59,6 +60,11 @@
                     );
                 in
                 {
+                    _module.args.pkgs = import inputs.nixpkgs {
+                        inherit system;
+                        config.allowUnfree = true;
+                    };
+
                     packages.default = package;
 
                     apps.default = {
@@ -103,6 +109,7 @@
 
                         packages = with pkgs; [
                             cargo-nextest
+                            rar
                             rust-analyzer
                         ];
 

@@ -1,13 +1,17 @@
 use bitflags::bitflags;
 
-use crate::{cursor::ByteCursor, headers::main_archive::MainHeader};
+use crate::{
+    cursor::ByteCursor,
+    headers::{file::FileHeader, main::MainHeader},
+};
 
-mod main_archive;
+mod file;
+mod main;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Header {
     Main(MainHeader),
-    File,
+    File(FileHeader),
     Service,
     Encryption,
     End,
@@ -15,14 +19,14 @@ pub enum Header {
 
 impl Header {
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let mut c = ByteCursor::from_bytes(bytes);
+        let mut cursor = ByteCursor::from_bytes(bytes);
 
-        let kind = c.read_vint().unwrap();
-        let flags = HeaderFlags::from_bits_retain(c.read_vint().unwrap());
+        let kind = cursor.read_vint().unwrap();
+        let flags = HeaderFlags::from_bits_retain(cursor.read_vint().unwrap());
 
         match kind {
-            1 => Self::Main(MainHeader::parse(c, flags)),
-            2 => Self::File,
+            1 => Self::Main(MainHeader::parse(&mut cursor, flags)),
+            2 => Self::File(FileHeader::parse(&mut cursor, flags)),
             3 => Self::Service,
             4 => Self::Encryption,
             5 => Self::End,

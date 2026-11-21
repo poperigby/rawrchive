@@ -8,36 +8,36 @@ use crate::{cursor::ByteCursor, headers::HeaderFlags};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MainHeader {
-    pub(crate) extra_area_size: Option<u64>,
-    pub(crate) archive_flags: ArchiveFlags,
-    pub(crate) volume_number: Option<u64>,
-    pub(crate) extra_area: Vec<ExtraRecord>,
+    extra_area_size: Option<u64>,
+    flags: ArchiveFlags,
+    volume_number: Option<u64>,
+    extra_area: Vec<ExtraRecord>,
 }
 impl MainHeader {
-    pub fn parse(mut cursor: ByteCursor, flags: HeaderFlags) -> Self {
-        let extra_area_size = if flags.contains(HeaderFlags::EXTRA_AREA) {
+    pub fn parse(cursor: &mut ByteCursor, header_flags: HeaderFlags) -> Self {
+        let extra_area_size = if header_flags.contains(HeaderFlags::EXTRA_AREA) {
             Some(cursor.read_vint().unwrap())
         } else {
             None
         };
 
-        let archive_flags = ArchiveFlags::from_bits_retain(cursor.read_vint().unwrap());
+        let flags = ArchiveFlags::from_bits_retain(cursor.read_vint().unwrap());
 
-        let volume_number = if archive_flags.contains(ArchiveFlags::MULTI_VOLUME) {
+        let volume_number = if flags.contains(ArchiveFlags::MULTI_VOLUME) {
             Some(cursor.read_vint().unwrap())
         } else {
             None
         };
 
-        let extra_area = if flags.contains(HeaderFlags::EXTRA_AREA) {
-            ExtraRecord::parse_all(&mut cursor)
+        let extra_area = if header_flags.contains(HeaderFlags::EXTRA_AREA) {
+            ExtraRecord::parse_all(cursor)
         } else {
             Vec::new()
         };
 
         Self {
             extra_area_size,
-            archive_flags,
+            flags,
             volume_number,
             extra_area,
         }
@@ -201,7 +201,7 @@ mod test {
         Archive,
         headers::{
             Header,
-            main_archive::{ArchiveFlags, ExtraRecord, LocatorRecord, MainHeader, MetadataRecord},
+            main::{ArchiveFlags, ExtraRecord, LocatorRecord, MainHeader, MetadataRecord},
         },
     };
 
@@ -216,7 +216,7 @@ mod test {
             header("libarchive/v5/stored.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(6),
-                archive_flags: ArchiveFlags::empty(),
+                flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: None,
@@ -232,7 +232,7 @@ mod test {
             header("libarchive/v5/solid.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(7),
-                archive_flags: ArchiveFlags::SOLID,
+                flags: ArchiveFlags::SOLID,
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: None,
@@ -248,7 +248,7 @@ mod test {
             header("libarchive/v5/arm.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(8),
-                archive_flags: ArchiveFlags::empty(),
+                flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: Some(40982),
@@ -264,7 +264,7 @@ mod test {
             header("libarchive/v5/extra_field_underflow.rar"),
             Header::Main(MainHeader {
                 extra_area_size: None,
-                archive_flags: ArchiveFlags::empty(),
+                flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: Vec::new(),
             }),
@@ -278,7 +278,7 @@ mod test {
             header("libarchive/v5/main_block_extra_bytes.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(6),
-                archive_flags: ArchiveFlags::empty(),
+                flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: None,
@@ -294,7 +294,7 @@ mod test {
             header("rawrchive/v5/metadata_filetime.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(24),
-                archive_flags: ArchiveFlags::empty(),
+                flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
                     name: Some("metadata.rar".into()),
@@ -310,7 +310,7 @@ mod test {
             header("rawrchive/v5/metadata_unix.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(20),
-                archive_flags: ArchiveFlags::empty(),
+                flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
                     name: Some("metadata.rar".into()),
@@ -326,7 +326,7 @@ mod test {
             header("rawrchive/v5/metadata_unix_ns.rar"),
             Header::Main(MainHeader {
                 extra_area_size: Some(24),
-                archive_flags: ArchiveFlags::empty(),
+                flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
                     name: Some("metadata.rar".into()),
