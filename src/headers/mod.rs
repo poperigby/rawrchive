@@ -5,8 +5,8 @@ use crate::{
     headers::{file::FileHeader, main::MainHeader},
 };
 
-mod file;
-mod main;
+pub(crate) mod file;
+pub(crate) mod main;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Header {

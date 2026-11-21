@@ -1,14 +1,14 @@
 #![forbid(unsafe_code)]
 
-#[cfg(test)]
-use std::fs::File;
 use std::{
     collections::VecDeque,
     io::{BufReader, Read, Seek},
-    path::PathBuf,
 };
 
-use crate::block::Block;
+use crate::{
+    block::Block,
+    headers::{Header, main::MainHeader},
+};
 
 mod block;
 mod cursor;
@@ -30,8 +30,8 @@ pub struct Archive<R>
 where
     R: Read + Seek,
 {
-    source: BufReader<R>,
-    main: MainHeader,
+    reader: BufReader<R>,
+    main_header: MainHeader,
 }
 
 impl<R> Archive<R>
@@ -39,17 +39,15 @@ where
     R: Read + Seek,
 {
     pub fn open(source: R) -> Self {
-        let reader = BufReader::new(source);
+        let mut reader = BufReader::new(source);
 
-        let mut a = Self { source: reader };
-
-        a.read_to_signature();
+        Self::read_to_signature(&mut reader);
 
         let mut next_byte = [0u8; 1];
-        a.source.read_exact(&mut next_byte).unwrap();
+        reader.read_exact(&mut next_byte).unwrap();
         let version = match next_byte[0] {
             0x01 => {
-                a.source.read_exact(&mut next_byte).unwrap();
+                reader.read_exact(&mut next_byte).unwrap();
                 if next_byte[0] == 0x00 {
                     Version::Rar5
                 } else {
@@ -60,20 +58,31 @@ where
             _ => panic!("Invalid version"),
         };
 
-        // TODO: Parse through the opening blocks until we get to the file blocks
+        // TODO: Assumes there isn't an encryption header
 
-        a
+        let main_header = if let Header::Main(header) = Block::next(&mut reader).header {
+            header
+        } else {
+            panic!("No main header");
+        };
+
+        // TODO: Assumes there isn't an archive comment service header
+
+        Self {
+            reader,
+            main_header,
+        }
     }
 
     pub fn next_block<'a>(&'a mut self) -> Block<'a, R> {
-        Block::new(&mut self.source)
+        Block::next(&mut self.reader)
     }
 
     /// Read through the source until either the signature is found, or we hit the maximum size of
     /// the SFX header (1MB).
-    fn read_to_signature(&mut self) {
+    fn read_to_signature(source: &mut BufReader<R>) {
         let mut buffer = [0u8; 6];
-        self.source.read_exact(&mut buffer).unwrap();
+        source.read_exact(&mut buffer).unwrap();
 
         let mut queue: VecDeque<u8> = VecDeque::with_capacity(6);
         queue.extend(buffer);
@@ -84,7 +93,7 @@ where
         let mut next_byte = [0u8; 1];
         let mut bytes_read = 0;
         while queue != SIGNATURE {
-            self.source.read_exact(&mut next_byte).unwrap();
+            source.read_exact(&mut next_byte).unwrap();
             queue.push_back(next_byte[0]);
             queue.pop_front();
 
@@ -100,7 +109,7 @@ where
 #[cfg(test)]
 impl Archive<std::fs::File> {
     pub(crate) fn open_test(name: &str) -> Self {
-        use std::fs::File;
+        use std::{fs::File, path::PathBuf};
 
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/data")

@@ -15,7 +15,7 @@ impl<'a, R> Block<'a, R>
 where
     R: Read + Seek,
 {
-    pub fn new(source: &'a mut BufReader<R>) -> Self {
+    pub fn next(source: &'a mut BufReader<R>) -> Self {
         let mut crc_bytes = [0u8; 4];
         source.read_exact(&mut crc_bytes).unwrap();
         let stored_crc = u32::from_le_bytes(crc_bytes);

@@ -173,7 +173,7 @@ mod test {
         },
     };
 
-    fn header(test_data: &str) -> Header {
+    fn first_header(test_data: &str) -> Header {
         let mut a = Archive::open_test(test_data);
 
         let mut block = a.next_block();
@@ -187,7 +187,7 @@ mod test {
     #[test]
     fn stored() {
         assert_eq!(
-            header("libarchive/v5/stored.rar"),
+            first_header("libarchive/v5/stored.rar"),
             Header::File(FileHeader {
                 extra_area_size: Some(11),
                 data_size: Some(29),

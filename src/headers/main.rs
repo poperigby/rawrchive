@@ -199,30 +199,27 @@ mod test {
 
     use crate::{
         Archive,
-        headers::{
-            Header,
-            main::{ArchiveFlags, ExtraRecord, LocatorRecord, MainHeader, MetadataRecord},
-        },
+        headers::main::{ArchiveFlags, ExtraRecord, LocatorRecord, MainHeader, MetadataRecord},
     };
 
-    fn header(test_data: &str) -> Header {
-        let mut a = Archive::open_test(test_data);
-        a.next_block().header
+    fn header(test_data: &str) -> MainHeader {
+        let a = Archive::open_test(test_data);
+        a.main_header
     }
 
     #[test]
     fn stored() {
         assert_eq!(
             header("libarchive/v5/stored.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: Some(6),
                 flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: None,
                     recovery_offset: None,
-                }),],
-            }),
+                })]
+            }
         );
     }
 
@@ -230,15 +227,15 @@ mod test {
     fn solid() {
         assert_eq!(
             header("libarchive/v5/solid.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: Some(7),
                 flags: ArchiveFlags::SOLID,
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: None,
                     recovery_offset: None,
-                })],
-            }),
+                })]
+            }
         );
     }
 
@@ -246,15 +243,15 @@ mod test {
     fn arm() {
         assert_eq!(
             header("libarchive/v5/arm.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: Some(8),
                 flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: Some(40982),
                     recovery_offset: None,
-                })],
-            }),
+                })]
+            }
         );
     }
 
@@ -262,12 +259,12 @@ mod test {
     fn extra_field_underflow() {
         assert_eq!(
             header("libarchive/v5/extra_field_underflow.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: None,
                 flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: Vec::new(),
-            }),
+            }
         );
     }
 
@@ -276,15 +273,15 @@ mod test {
         assert_eq!(
             // Contains 8 bytes of 0x00 padding that will just be ignored.
             header("libarchive/v5/main_block_extra_bytes.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: Some(6),
                 flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Locator(LocatorRecord {
                     quick_open_offset: None,
                     recovery_offset: None
-                })],
-            }),
+                })]
+            }
         );
     }
 
@@ -292,15 +289,15 @@ mod test {
     fn metadata_filetime() {
         assert_eq!(
             header("rawrchive/v5/metadata_filetime.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: Some(24),
                 flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
                     name: Some("metadata.rar".into()),
                     time: Some(UNIX_EPOCH + Duration::new(1_795_120_205, 921_933_900))
-                })],
-            }),
+                })]
+            }
         );
     }
 
@@ -308,15 +305,15 @@ mod test {
     fn metadata_unix() {
         assert_eq!(
             header("rawrchive/v5/metadata_unix.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: Some(20),
                 flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
                     name: Some("metadata.rar".into()),
                     time: Some(UNIX_EPOCH + Duration::new(1_795_120_205, 0))
-                })],
-            }),
+                })]
+            }
         );
     }
 
@@ -324,15 +321,15 @@ mod test {
     fn metadata_unix_ns() {
         assert_eq!(
             header("rawrchive/v5/metadata_unix_ns.rar"),
-            Header::Main(MainHeader {
+            MainHeader {
                 extra_area_size: Some(24),
                 flags: ArchiveFlags::empty(),
                 volume_number: None,
                 extra_area: vec![ExtraRecord::Metadata(MetadataRecord {
                     name: Some("metadata.rar".into()),
                     time: Some(UNIX_EPOCH + Duration::new(1_795_120_205, 921_933_900))
-                })],
-            }),
+                })]
+            }
         );
     }
 }
