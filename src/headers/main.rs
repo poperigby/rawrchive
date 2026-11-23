@@ -80,16 +80,18 @@ impl ExtraRecord {
         while cursor.remaining() != 0 {
             let size = cursor.read_vint().unwrap();
             let kind = cursor.read_vint().unwrap();
-            match kind {
-                1 => records.push(Self::Locator(LocatorRecord::parse(cursor))),
-                2 => records.push(Self::Metadata(MetadataRecord::parse(cursor))),
+            records.push(match kind {
+                0x01 => Self::Locator(LocatorRecord::parse(cursor)),
+                0x02 => Self::Metadata(MetadataRecord::parse(cursor)),
                 unknown => {
                     warn!(
                         "Unrecognized extra record flag in main header: {unknown}. Skipping over it."
                     );
-                    cursor.skip(size as usize)
+                    cursor.skip(size as usize);
+
+                    break;
                 }
-            }
+            })
         }
 
         records
@@ -193,9 +195,7 @@ bitflags! {
 
 #[cfg(test)]
 mod test {
-    use std::time::UNIX_EPOCH;
-
-    use nt_time::time::Duration;
+    use std::time::{Duration, UNIX_EPOCH};
 
     use crate::{
         Archive,

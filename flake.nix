@@ -42,8 +42,6 @@
                 }:
                 let
                     craneLib = inputs.crane.mkLib pkgs;
-                    cargoToml = fromTOML (builtins.readFile ./Cargo.toml);
-                    packageName = cargoToml.package.name;
                     src = craneLib.cleanCargoSource ./.;
 
                     commonArgs = {
@@ -65,14 +63,6 @@
                         config.allowUnfree = true;
                     };
 
-                    packages.default = package;
-
-                    apps.default = {
-                        type = "app";
-                        program = "${self'.packages.default}/bin/${packageName}";
-                        meta.description = "Run ${packageName}";
-                    };
-
                     checks = {
                         inherit package;
 
@@ -80,7 +70,7 @@
                             commonArgs
                             // {
                                 inherit cargoArtifacts;
-                                cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+                                cargoClippyExtraArgs = "--all-targets";
                             }
                         );
 

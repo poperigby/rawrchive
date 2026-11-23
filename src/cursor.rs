@@ -64,6 +64,18 @@ impl<'a> ByteCursor<'a> {
         Ok(bytes)
     }
 
+    /// Read a fixed size chunk of the next `N` bytes in the byte array. Use this function when you know the size of data at
+    /// compile time (e.g. integers).
+    pub fn read_chunk<const N: usize>(&mut self) -> Result<[u8; N]> {
+        let bytes = self.bytes[self.position..]
+            .split_first_chunk::<N>()
+            .ok_or(ParseError::Truncated)?;
+
+        self.position += N;
+
+        Ok(*bytes.0)
+    }
+
     /// Skip `n` bytes.
     pub fn skip(&mut self, n: usize) {
         self.position += n;
@@ -79,27 +91,15 @@ impl<'a> ByteCursor<'a> {
     }
 
     pub fn read_u16(&mut self) -> Result<u16> {
-        Ok(u16::from_le_bytes(self.read_array::<2>()?))
+        Ok(u16::from_le_bytes(self.read_chunk::<2>()?))
     }
 
     pub fn read_u32(&mut self) -> Result<u32> {
-        Ok(u32::from_le_bytes(self.read_array::<4>()?))
+        Ok(u32::from_le_bytes(self.read_chunk::<4>()?))
     }
 
     pub fn read_u64(&mut self) -> Result<u64> {
-        Ok(u64::from_le_bytes(self.read_array::<8>()?))
-    }
-
-    /// Read the next `N` bytes in the byte array. Use this function when you know the size of data at
-    /// compile time (e.g. integers).
-    fn read_array<const N: usize>(&mut self) -> Result<[u8; N]> {
-        let bytes = self.bytes[self.position..]
-            .split_first_chunk::<N>()
-            .ok_or(ParseError::Truncated)?;
-
-        self.position += N;
-
-        Ok(*bytes.0)
+        Ok(u64::from_le_bytes(self.read_chunk::<8>()?))
     }
 }
 

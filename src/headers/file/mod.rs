@@ -1,24 +1,41 @@
-use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bitflags::bitflags;
+use tracing::warn;
 
-use crate::{cursor::ByteCursor, headers::HeaderFlags};
+use crate::{
+    cursor::ByteCursor,
+    headers::{
+        HeaderFlags,
+        file::{
+            encryption::EncryptionRecord, hash::HashRecord, redirection::RedirectionRecord,
+            time::TimeRecord, version::VersionRecord,
+        },
+    },
+};
 
+mod encryption;
+mod hash;
+mod redirection;
+mod time;
+mod unix_owner;
+mod version;
+
+/// See <https://www.rarlab.com/technote.htm#filehead:~:text=1%2E-,File%20header%20and%20service%20header>.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileHeader {
     extra_area_size: Option<u64>,
     data_size: Option<u64>,
     flags: FileFlags,
     unpacked_size: u64,
-    // TODO: Make into a custom type
-    attributes: u64,
-    // TODO: Use SystemTime
-    mtime: Option<u32>,
+    attributes: Attributes,
+    mtime: Option<SystemTime>,
     crc32: Option<u32>,
-    // TODO: Make into a custom type
     compression_info: CompressionInfo,
-    host_os: HostOs,
-    name: PathBuf,
+    // TODO: Provide a method that validates and returns this as a PathBuf
+    // It will also have to map this bullshit back to the original bytes:
+    // https://www.rarlab.com/technote.htm#filehead:~:text=If,-Unix
+    name: String,
 }
 
 impl FileHeader {
@@ -39,10 +56,13 @@ impl FileHeader {
 
         let unpacked_size = cursor.read_vint().unwrap();
 
-        let attributes = cursor.read_vint().unwrap();
+        let attribute_bytes = cursor.read_vint().unwrap();
 
         let mtime = if flags.contains(FileFlags::UNIX_TIME) {
-            Some(cursor.read_u32().unwrap())
+            // For some reason this field is a u32, even though Unix defines mtime `tv_sec` as a `long`.
+            // https://man7.org/linux/man-pages/man7/inode.7.html#:~:text=Last%20modification%20timestamp%20%28mtime%29
+            // https://man7.org/linux/man-pages/man3/timespec.3type.html
+            Some(UNIX_EPOCH + Duration::from_secs(cursor.read_u32().unwrap() as u64))
         } else {
             None
         };
@@ -56,27 +76,44 @@ impl FileHeader {
         let compression_info = CompressionInfo::parse(cursor.read_vint().unwrap());
 
         let host_os = match cursor.read_vint().unwrap() {
-            0x0000 => HostOs::Windows,
-            0x0001 => HostOs::Unix,
+            0x0001 => Os::Unix,
+            0x0000 => Os::Windows,
             _ => panic!("Unknown host OS"),
         };
 
         let name_len = cursor.read_vint().unwrap();
         let name_bytes = cursor.read_bytes(name_len as usize).unwrap().to_vec();
+
+        // "Forward slash character is used as the path separator both for Unix and Windows names."
+        // https://www.rarlab.com/technote.htm#filehead:~:text=Forward
         let name = String::from_utf8(name_bytes).unwrap();
+        // "Backslashes are treated as a part of name for Unix names and as invalid character for Windows file names."
+        // https://www.rarlab.com/technote.htm#filehead:~:text=Backslashes
+        //
+        // Valid writers shouldn't allow an archive with a name containing `\` to be made, but we
+        // still need to guard against it in the case of a corrupted archive or broken writer.
+        if host_os == Os::Windows && name.contains("\\") {
+            panic!("Windows file names shouldn't contain a backslash");
+        }
 
         Self {
             extra_area_size,
             data_size,
             flags,
             unpacked_size,
-            attributes,
+            attributes: match host_os {
+                Os::Unix => Attributes::Unix(attribute_bytes),
+                Os::Windows => Attributes::Windows(attribute_bytes),
+            },
             mtime,
             crc32,
             compression_info,
-            host_os,
-            name: PathBuf::from(name),
+            name,
         }
+    }
+
+    pub fn data_size(&self) -> Option<u64> {
+        self.data_size
     }
 }
 
@@ -95,6 +132,13 @@ bitflags! {
         /// stream is reached.
         const UNKNOWN_UNPACKED_SIZE = 0x0008;
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Attributes {
+    /// Stores attributes in `st_mode` format: <https://man7.org/linux/man-pages/man7/inode.7.html#:~:text=The%20file%20type%20and%20mode>.
+    Unix(u64),
+    Windows(u64),
 }
 
 /// See `Compression information` field at <https://www.rarlab.com/technote.htm#filehead:~:text=Compression%20information>.
@@ -156,20 +200,58 @@ pub enum AlgorithmVersion {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum HostOs {
-    Windows,
+pub enum Os {
     Unix,
+    Windows,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExtraRecord {
+    Encryption(EncryptionRecord),
+    Hash(HashRecord),
+    Time(TimeRecord),
+    Version(VersionRecord),
+    Redirection(RedirectionRecord),
+    UnixOwner,
+}
+
+impl ExtraRecord {
+    pub fn parse_all(cursor: &mut ByteCursor) -> Vec<ExtraRecord> {
+        let mut records = Vec::new();
+
+        while cursor.remaining() != 0 {
+            /// TODO: Hmm maybe we should be doing something with this size?
+            let size = cursor.read_vint().unwrap();
+            let kind = cursor.read_vint().unwrap();
+            records.push(match kind {
+                0x02 => ExtraRecord::Encryption(EncryptionRecord::parse(cursor)),
+                0x03 => ExtraRecord::Hash(HashRecord::parse(cursor)),
+                0x04 => ExtraRecord::Time(TimeRecord::parse(cursor)),
+                0x05 => ExtraRecord::Version(VersionRecord::parse(cursor)),
+                0x06 => ExtraRecord::Redirection(RedirectionRecord::parse(cursor)),
+                0x07 => ExtraRecord::UnixOwner,
+                unknown => {
+                    warn!(
+                        "Unrecognized extra record flag in main header: {unknown}. Skipping over it."
+                    );
+                    cursor.skip(size as usize);
+
+                    break;
+                }
+            });
+        }
+
+        records
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
-
     use crate::{
         Archive,
         headers::{
             Header,
-            file::{AlgorithmVersion, CompressionInfo, FileFlags, FileHeader, HostOs},
+            file::{AlgorithmVersion, Attributes, CompressionInfo, FileFlags, FileHeader},
         },
     };
 
@@ -194,7 +276,7 @@ mod test {
                 flags: FileFlags::CRC32,
                 unpacked_size: 29,
                 // -rw-r--r--
-                attributes: 0o100644,
+                attributes: Attributes::Unix(0o100644),
                 mtime: None,
                 crc32: Some(0x95A043B4),
                 compression_info: CompressionInfo {
@@ -203,8 +285,7 @@ mod test {
                     method: 0,
                     dictionary_size: 131072
                 },
-                host_os: HostOs::Unix,
-                name: PathBuf::from("helloworld.txt"),
+                name: "helloworld.txt".to_string(),
             })
         );
     }

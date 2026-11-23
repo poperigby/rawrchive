@@ -1,4 +1,4 @@
-use std::io::{BufReader, Read, Seek};
+use std::io::{self, BufReader, Read, Seek, Take};
 
 use crate::headers::Header;
 
@@ -62,6 +62,46 @@ where
         let header = Header::from_bytes(&buffer);
 
         Self { source, header }
+    }
+
+    /// Returns a [`Data`] area that can be [`Read`] or [`Seek`]ed. The source is limited to the
+    /// size of the data area, so there is no danger of reading beyond it.
+    pub fn data(&'a mut self) -> Option<Data<'a, R>> {
+        if let Header::File(header) = &self.header
+            && let Some(data_size) = header.data_size()
+        {
+            Some(Data {
+                source: self.source.take(data_size),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Data<'a, R>
+where
+    R: Read + Seek,
+{
+    source: Take<&'a mut BufReader<R>>,
+}
+
+impl<'a, R> Read for Data<'a, R>
+where
+    R: Read + Seek,
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.source.read(buf)
+    }
+}
+
+impl<'a, R> Seek for Data<'a, R>
+where
+    R: Read + Seek,
+{
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.source.seek(pos)
     }
 }
 
