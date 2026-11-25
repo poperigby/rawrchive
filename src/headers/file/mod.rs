@@ -9,7 +9,7 @@ use crate::{
         HeaderFlags,
         file::{
             encryption::EncryptionRecord, hash::HashRecord, redirection::RedirectionRecord,
-            time::TimeRecord, version::VersionRecord,
+            time::TimeRecord, unix_owner::UnixOwnerRecord, version::VersionRecord,
         },
     },
 };
@@ -36,6 +36,7 @@ pub struct FileHeader {
     // It will also have to map this bullshit back to the original bytes:
     // https://www.rarlab.com/technote.htm#filehead:~:text=If,-Unix
     name: String,
+    extra_area: Vec<ExtraRecord>,
 }
 
 impl FileHeader {
@@ -96,6 +97,12 @@ impl FileHeader {
             panic!("Windows file names shouldn't contain a backslash");
         }
 
+        let extra_area = if header_flags.contains(HeaderFlags::EXTRA_AREA) {
+            ExtraRecord::parse_all(cursor)
+        } else {
+            Vec::new()
+        };
+
         Self {
             extra_area_size,
             data_size,
@@ -109,6 +116,7 @@ impl FileHeader {
             crc32,
             compression_info,
             name,
+            extra_area,
         }
     }
 
@@ -212,7 +220,7 @@ pub enum ExtraRecord {
     Time(TimeRecord),
     Version(VersionRecord),
     Redirection(RedirectionRecord),
-    UnixOwner,
+    UnixOwner(UnixOwnerRecord),
 }
 
 impl ExtraRecord {
@@ -220,16 +228,16 @@ impl ExtraRecord {
         let mut records = Vec::new();
 
         while cursor.remaining() != 0 {
-            /// TODO: Hmm maybe we should be doing something with this size?
+            // TODO: Hmm maybe we should be doing something with this size?
             let size = cursor.read_vint().unwrap();
             let kind = cursor.read_vint().unwrap();
             records.push(match kind {
-                0x02 => ExtraRecord::Encryption(EncryptionRecord::parse(cursor)),
-                0x03 => ExtraRecord::Hash(HashRecord::parse(cursor)),
-                0x04 => ExtraRecord::Time(TimeRecord::parse(cursor)),
-                0x05 => ExtraRecord::Version(VersionRecord::parse(cursor)),
-                0x06 => ExtraRecord::Redirection(RedirectionRecord::parse(cursor)),
-                0x07 => ExtraRecord::UnixOwner,
+                0x01 => ExtraRecord::Encryption(EncryptionRecord::parse(cursor)),
+                0x02 => ExtraRecord::Hash(HashRecord::parse(cursor)),
+                0x03 => ExtraRecord::Time(TimeRecord::parse(cursor)),
+                0x04 => ExtraRecord::Version(VersionRecord::parse(cursor)),
+                0x05 => ExtraRecord::Redirection(RedirectionRecord::parse(cursor)),
+                0x06 => ExtraRecord::UnixOwner(UnixOwnerRecord::parse(cursor)),
                 unknown => {
                     warn!(
                         "Unrecognized extra record flag in main header: {unknown}. Skipping over it."
@@ -247,11 +255,18 @@ impl ExtraRecord {
 
 #[cfg(test)]
 mod test {
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use pretty_assertions::assert_eq;
+
     use crate::{
         Archive,
         headers::{
             Header,
-            file::{AlgorithmVersion, Attributes, CompressionInfo, FileFlags, FileHeader},
+            file::{
+                AlgorithmVersion, Attributes, CompressionInfo, ExtraRecord, FileFlags, FileHeader,
+                time::TimeRecord,
+            },
         },
     };
 
@@ -286,6 +301,11 @@ mod test {
                     dictionary_size: 131072
                 },
                 name: "helloworld.txt".to_string(),
+                extra_area: vec![ExtraRecord::Time(TimeRecord {
+                    mtime: Some(UNIX_EPOCH + Duration::new(1_537_937_022, 437_184_854)),
+                    ctime: None,
+                    atime: None,
+                })],
             })
         );
     }

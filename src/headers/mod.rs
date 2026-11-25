@@ -22,6 +22,7 @@ impl Header {
         let mut cursor = ByteCursor::from_bytes(bytes);
 
         let kind = cursor.read_vint().unwrap();
+
         let flags = HeaderFlags::from_bits_retain(cursor.read_vint().unwrap());
 
         match kind {

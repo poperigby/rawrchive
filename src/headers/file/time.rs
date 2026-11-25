@@ -8,9 +8,9 @@ use crate::cursor::ByteCursor;
 /// See <https://www.rarlab.com/technote.htm#filehead:~:text=File%20time%20record,-This>.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeRecord {
-    mtime: Option<SystemTime>,
-    ctime: Option<SystemTime>,
-    atime: Option<SystemTime>,
+    pub(crate) mtime: Option<SystemTime>,
+    pub(crate) ctime: Option<SystemTime>,
+    pub(crate) atime: Option<SystemTime>,
 }
 
 impl TimeRecord {
@@ -27,7 +27,7 @@ impl TimeRecord {
             None
         };
 
-        let mut ctime = if flags.contains(Flags::MTIME) {
+        let mut ctime = if flags.contains(Flags::CTIME) {
             if flags.contains(Flags::UNIX_TIME) {
                 Some(UNIX_EPOCH + Duration::from_secs(cursor.read_u32().unwrap() as u64))
             } else {
@@ -37,7 +37,7 @@ impl TimeRecord {
             None
         };
 
-        let mut atime = if flags.contains(Flags::MTIME) {
+        let mut atime = if flags.contains(Flags::ATIME) {
             if flags.contains(Flags::UNIX_TIME) {
                 Some(UNIX_EPOCH + Duration::from_secs(cursor.read_u32().unwrap() as u64))
             } else {

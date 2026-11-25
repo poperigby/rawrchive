@@ -23,6 +23,7 @@ where
         let mut header_size_bytes = Vec::with_capacity(3);
         let mut header_size: u64 = 0;
         let mut shift = 0;
+        // Read the vint that stores the header size
         // The header size field must not be longer than 3 bytes in the current implementation of RAR5
         for _ in 0..3 {
             let mut buffer = [0u8; 1];
